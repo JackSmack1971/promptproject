@@ -1,0 +1,26 @@
+{
+  "name": "prompt-engineering-platform-analysis-backend",
+  "version": "1.0.0",
+  "description": "Backend for Prompt Engineering Platform Analysis project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@huggingface/inference": "^4.5.1",
+    "@sentry/integrations": "^7.114.0",
+    "@sentry/node": "^9.38.0",
+    "bcrypt": "^5.1.1",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^5.9.0",
+    "pg": "^8.12.0",
+    "redis": "^4.6.14",
+    "uuid": "^9.0.1",
+    "xss": "^1.0.14"
+  }
+}

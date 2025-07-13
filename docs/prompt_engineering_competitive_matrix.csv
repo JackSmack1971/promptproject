@@ -1,0 +1,19 @@
+Tool/Platform,Type,Pricing,Key Features,Target Users,Strengths,Weaknesses,Differentiation
+PromptPerfect,Prompt Optimization,$8.33-$99.99/month,"Multi-model optimization, Real-time feedback, Auto-prompt refinement","Developers, Content creators, AI developers","Supports multiple LLMs, Automated optimization, Fast results","Limited free tier, Credit-based system",Multimodal auto-prompt optimizer
+LangChain,Framework,Open Source,"Modular development, Chain-based workflows, Multi-model support","Developers, Enterprises","Extensive ecosystem, Flexible, Large community","Steep learning curve, Complex setup",Chain-based architecture for complex workflows
+LangSmith,Platform,Commercial,"Testing, Monitoring, Debugging, Production deployment",Enterprise developers,"Comprehensive lifecycle management, Built on LangChain","Expensive, Complex for simple use cases",Production-focused with testing/monitoring
+Agenta,Platform,Open Source,"Experimentation, Evaluation, Deployment, Multi-prompt testing","Developers, Teams","Open source, Comprehensive testing",Requires technical expertise,Experiment-focused approach
+OpenAI Playground,Playground,Free/Pay-per-use,"Direct model access, Real-time experimentation","Beginners, Researchers","Easy to use, Direct API access",Limited to OpenAI models,Official OpenAI interface
+Promptbase,Marketplace,Variable,"Prompt marketplace, Community-driven","Prompt engineers, Businesses","Ready-made prompts, Community","Quality inconsistency, Marketplace fees",Prompt marketplace model
+ChainForge,Visual Tool,Open Source,"Visual prompt comparison, Hypothesis testing","Researchers, Developers","Visual interface, Comparison tools",Limited to specific use cases,Visual prompt engineering
+Lilypad,Platform,Commercial,"Collaborative engineering, Business-developer integration","Business users, Developers","Collaborative approach, Business-friendly","New platform, Limited track record",Business-developer collaboration
+Mirascope,Toolkit,Open Source,"Lightweight, Developer-friendly",Software developers,"Lightweight, Easy integration",Limited features compared to full platforms,Developer-focused simplicity
+Weave (Weights & Biases),MLOps Platform,Freemium,"Trace-based debugging, Scoring, MLOps integration","ML Engineers, Data Scientists","Integration with MLOps, Debugging focus",Part of larger platform,MLOps-integrated prompt engineering
+Haystack,Framework,Open Source,"Pipeline-based, Search-focused, NLP framework","Search developers, NLP engineers","Production-ready, Scalable",More complex than needed for simple prompts,Search and QA pipeline focus
+Promptitude,API Service,$19/month,"API integration, Prompt management",Developers,Easy API integration,Limited features,API-first approach
+Dust.tt,Platform,Commercial,"Graphical UI, Chain building, Standard blocks","Business users, Developers","Visual interface, Easy to use",Limited customization,Visual chain building
+Wordflow,Social Platform,Open Source,"Social prompt engineering, Collaborative","Non-experts, Community","Social features, Beginner-friendly",Limited advanced features,Social prompt engineering
+PromptLayer,Management,Commercial,"Prompt tracking, Analytics, Multi-provider","Teams, Enterprises","Analytics focus, Multi-provider",Complexity for simple use cases,Analytics and tracking focus
+AI Prompt Optimizer,Browser Extension,Free,"Chrome extension, One-click optimization",General users,"Easy to use, Browser-based",Limited functionality,Browser extension convenience
+Promptmetheus,IDE,$35/month,"Prompt IDE, Multi-provider, Collaboration","Developers, Teams","IDE-like experience, Multi-provider",Subscription cost,IDE-focused approach
+Weavel,Automation,Custom,"Automated prompt engineering, 50x faster results","Developers, Teams","Automation focus, Fast results","New platform, Limited documentation",Automated prompt optimization
