@@ -34,7 +34,8 @@
     "redis": "^4.6.14",
     "uuid": "^9.0.1",
     "winston": "^3.13.0",
-    "xss": "^1.0.14"
+    "xss": "^1.0.14",
+    "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.4",
