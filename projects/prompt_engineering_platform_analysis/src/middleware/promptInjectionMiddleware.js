@@ -1,83 +1,197 @@
 const { body } = require('express-validator');
 
-// Common prompt injection patterns - enhanced security
+// Security configuration for timeout management
+const SECURITY_CONFIG = {
+  MAX_BASE_PROCESSING_TIME: 50, // 50ms base timeout
+  MAX_COMPLEXITY_TIME: 500, // 500ms max for complex inputs
+  COMPLEXITY_THRESHOLD: 1000, // Character count threshold for complexity
+  CIRCUIT_BREAKER_THRESHOLD: 5, // Max timeouts before circuit breaker
+  CIRCUIT_BREAKER_WINDOW: 60000, // 1 minute window for circuit breaker
+  INPUT_SANITY_LIMIT: 10000 // Hard limit on input size
+};
+
+// IP-based circuit breaker tracking
+const circuitBreakerTracker = new Map();
+
+// Enhanced prompt injection patterns - optimized for ReDoS resistance
 const INJECTION_PATTERNS = [
-  // System prompt manipulation - simplified patterns
-  { pattern: /system\s*:/i, type: 'system_manipulation' },
-  { pattern: /ignore\s+previous/i, type: 'instruction_override' },
-  { pattern: /disregard\s+all/i, type: 'instruction_override' },
-  { pattern: /forget\s+all/i, type: 'instruction_override' },
-  { pattern: /you\s+are\s+now/i, type: 'role_manipulation' },
-  { pattern: /pretend\s+to\s+be/i, type: 'role_manipulation' },
-  { pattern: /act\s+as\s+if/i, type: 'role_manipulation' },
+  // System prompt manipulation - optimized patterns
+  { pattern: /^.*system\s*:/i, type: 'system_manipulation', complexity: 1 },
+  { pattern: /^.*ignore\s+previous/i, type: 'instruction_override', complexity: 1 },
+  { pattern: /^.*disregard\s+all/i, type: 'instruction_override', complexity: 1 },
+  { pattern: /^.*forget\s+all/i, type: 'instruction_override', complexity: 1 },
+  { pattern: /^.*you\s+are\s+now/i, type: 'role_manipulation', complexity: 1 },
+  { pattern: /^.*pretend\s+to\s+be/i, type: 'role_manipulation', complexity: 1 },
+  { pattern: /^.*act\s+as\s+if/i, type: 'role_manipulation', complexity: 1 },
   
-  // Code injection attempts - enhanced patterns
-  { pattern: /javascript:/i, type: 'code_injection' },
-  { pattern: /eval\s*\(/i, type: 'code_execution' },
-  { pattern: /exec\s*\(/i, type: 'code_execution' },
-  { pattern: /function\s*\(/i, type: 'code_execution' },
-  { pattern: /require\s*\(/i, type: 'code_execution' },
-  { pattern: /import\s*\(/i, type: 'code_execution' },
-  { pattern: /process\./i, type: 'system_access' },
-  { pattern: /global\./i, type: 'system_access' },
+  // Code injection attempts - optimized patterns
+  { pattern: /^.*javascript:/i, type: 'code_injection', complexity: 1 },
+  { pattern: /^.*eval\s*\(/i, type: 'code_execution', complexity: 2 },
+  { pattern: /^.*exec\s*\(/i, type: 'code_execution', complexity: 2 },
+  { pattern: /^.*function\s*\(/i, type: 'code_execution', complexity: 2 },
+  { pattern: /^.*require\s*\(/i, type: 'code_execution', complexity: 2 },
+  { pattern: /^.*import\s*\(/i, type: 'code_execution', complexity: 2 },
+  { pattern: /^.*process\./i, type: 'system_access', complexity: 2 },
+  { pattern: /^.*global\./i, type: 'system_access', complexity: 2 },
   
-  // SQL injection patterns
-  { pattern: /union\s+select/i, type: 'sql_injection' },
-  { pattern: /insert\s+into/i, type: 'sql_injection' },
-  { pattern: /update\s+.*\s+set/i, type: 'sql_injection' },
-  { pattern: /delete\s+from/i, type: 'sql_injection' },
-  { pattern: /drop\s+table/i, type: 'sql_injection' },
-  { pattern: /alter\s+table/i, type: 'sql_injection' },
-  { pattern: /exec\s+\(/i, type: 'sql_injection' },
+  // SQL injection patterns - optimized
+  { pattern: /^.*union\s+select/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*insert\s+into/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*update\s+.*\s+set/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*delete\s+from/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*drop\s+table/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*alter\s+table/i, type: 'sql_injection', complexity: 2 },
+  { pattern: /^.*exec\s+\(/i, type: 'sql_injection', complexity: 2 },
   
-  // Data exfiltration attempts
-  { pattern: /send\s+to\s+external/i, type: 'data_exfiltration' },
-  { pattern: /upload\s+to/i, type: 'data_exfiltration' },
-  { pattern: /share\s+with/i, type: 'data_sharing' },
-  { pattern: /post\s+to\s+url/i, type: 'data_exfiltration' },
-  { pattern: /http:\/\/|https:\/\//i, type: 'external_request' },
+  // Data exfiltration attempts - optimized
+  { pattern: /^.*send\s+to\s+external/i, type: 'data_exfiltration', complexity: 1 },
+  { pattern: /^.*upload\s+to/i, type: 'data_exfiltration', complexity: 1 },
+  { pattern: /^.*share\s+with/i, type: 'data_sharing', complexity: 1 },
+  { pattern: /^.*post\s+to\s+url/i, type: 'data_exfiltration', complexity: 1 },
+  { pattern: /^.*https?:\/\//i, type: 'external_request', complexity: 1 },
   
-  // Malicious instructions - enhanced
-  { pattern: /delete\s+all/i, type: 'destructive_command' },
-  { pattern: /wipe\s+data/i, type: 'destructive_command' },
-  { pattern: /rm\s+-rf/i, type: 'destructive_command' },
-  { pattern: /format\s+/i, type: 'destructive_command' },
-  { pattern: /shutdown\s+/i, type: 'destructive_command' },
+  // Malicious instructions - optimized
+  { pattern: /^.*delete\s+all/i, type: 'destructive_command', complexity: 1 },
+  { pattern: /^.*wipe\s+data/i, type: 'destructive_command', complexity: 1 },
+  { pattern: /^.*rm\s+-rf/i, type: 'destructive_command', complexity: 1 },
+  { pattern: /^.*format\s+/i, type: 'destructive_command', complexity: 1 },
+  { pattern: /^.*shutdown\s+/i, type: 'destructive_command', complexity: 1 },
   
-  // Social engineering - enhanced
-  { pattern: /admin\s+password/i, type: 'credential_harvesting' },
-  { pattern: /root\s+password/i, type: 'credential_harvesting' },
-  { pattern: /api\s+key/i, type: 'credential_harvesting' },
-  { pattern: /secret\s+key/i, type: 'credential_harvesting' },
-  { pattern: /bypass\s+security/i, type: 'security_bypass' },
-  { pattern: /override\s+restrictions/i, type: 'security_bypass' },
-  { pattern: /disable\s+security/i, type: 'security_bypass' },
+  // Social engineering - optimized
+  { pattern: /^.*admin\s+password/i, type: 'credential_harvesting', complexity: 1 },
+  { pattern: /^.*root\s+password/i, type: 'credential_harvesting', complexity: 1 },
+  { pattern: /^.*api\s+key/i, type: 'credential_harvesting', complexity: 1 },
+  { pattern: /^.*secret\s+key/i, type: 'credential_harvesting', complexity: 1 },
+  { pattern: /^.*bypass\s+security/i, type: 'security_bypass', complexity: 1 },
+  { pattern: /^.*override\s+restrictions/i, type: 'security_bypass', complexity: 1 },
+  { pattern: /^.*disable\s+security/i, type: 'security_bypass', complexity: 1 },
   
-  // Encoding bypass attempts
-  { pattern: /&#\d+;/i, type: 'encoding_bypass' },
-  { pattern: /&#x[\da-f]+;/i, type: 'encoding_bypass' },
-  { pattern: /%[0-9a-f]{2}/i, type: 'encoding_bypass' },
+  // Encoding bypass attempts - optimized
+  { pattern: /^.*&#\d+;/i, type: 'encoding_bypass', complexity: 1 },
+  { pattern: /^.*&#x[\da-f]+;/i, type: 'encoding_bypass', complexity: 1 },
+  { pattern: /^.*%[0-9a-f]{2}/i, type: 'encoding_bypass', complexity: 1 },
   
-  // Advanced injection techniques
-  { pattern: /prompt\s+injection/i, type: 'meta_injection' },
-  { pattern: /jailbreak/i, type: 'security_bypass' },
-  { pattern: /dan\s+mode/i, type: 'security_bypass' } // "Do Anything Now" mode
+  // Advanced injection techniques - optimized
+  { pattern: /^.*prompt\s+injection/i, type: 'meta_injection', complexity: 1 },
+  { pattern: /^.*jailbreak/i, type: 'security_bypass', complexity: 1 },
+  { pattern: /^.*dan\s+mode/i, type: 'security_bypass', complexity: 1 } // "Do Anything Now" mode
 ];
 
-// Prompt injection detection function
-const detectPromptInjection = (prompt) => {
+// Calculate input complexity score
+const calculateComplexity = (prompt) => {
+  let complexity = 0;
+  
+  // Length-based complexity
+  complexity += Math.min(prompt.length / 100, 10);
+  
+  // Special character density
+  const specialChars = prompt.replace(/[a-zA-Z0-9\s]/g, '').length;
+  complexity += (specialChars / prompt.length) * 5;
+  
+  // Nested patterns detection (basic)
+  const nestedPatterns = (prompt.match(/\([^()]*\([^()]*\)[^()]*\)/g) || []).length;
+  complexity += nestedPatterns * 3;
+  
+  // Regex-like patterns (potential ReDoS indicators)
+  const regexLike = (prompt.match(/[.*+?^${}()|[\]\\]/g) || []).length;
+  complexity += regexLike * 2;
+  
+  return Math.min(complexity, 50); // Cap at 50
+};
+
+// Circuit breaker check
+const checkCircuitBreaker = (ip) => {
+  const now = Date.now();
+  const tracker = circuitBreakerTracker.get(ip);
+  
+  if (!tracker) {
+    return false;
+  }
+  
+  // Reset if window has passed
+  if (now - tracker.firstTimeout > SECURITY_CONFIG.CIRCUIT_BREAKER_WINDOW) {
+    circuitBreakerTracker.delete(ip);
+    return false;
+  }
+  
+  return tracker.timeoutCount >= SECURITY_CONFIG.CIRCUIT_BREAKER_THRESHOLD;
+};
+
+// Update circuit breaker
+const updateCircuitBreaker = (ip, hadTimeout) => {
+  const now = Date.now();
+  let tracker = circuitBreakerTracker.get(ip);
+  
+  if (!tracker) {
+    tracker = { timeoutCount: 0, firstTimeout: now };
+    circuitBreakerTracker.set(ip, tracker);
+  }
+  
+  if (hadTimeout) {
+    tracker.timeoutCount++;
+  }
+  
+  // Clean up old entries periodically
+  if (Math.random() < 0.01) { // 1% chance per request
+    const cutoff = now - SECURITY_CONFIG.CIRCUIT_BREAKER_WINDOW;
+    for (const [key, value] of circuitBreakerTracker.entries()) {
+      if (value.firstTimeout < cutoff) {
+        circuitBreakerTracker.delete(key);
+      }
+    }
+  }
+};
+
+// Progressive timeout calculation
+const calculateTimeout = (prompt, complexity) => {
+  const baseTime = SECURITY_CONFIG.MAX_BASE_PROCESSING_TIME;
+  const maxTime = SECURITY_CONFIG.MAX_COMPLEXITY_TIME;
+  
+  // Linear scaling based on complexity
+  const scaledTime = baseTime + (complexity * 10);
+  return Math.min(scaledTime, maxTime);
+};
+
+// Enhanced prompt injection detection with progressive timeout
+const detectPromptInjection = (prompt, ip) => {
   if (!prompt || typeof prompt !== 'string') {
     return { isSafe: false, reason: 'Invalid prompt format' };
   }
 
+  // Check input size limit
+  if (prompt.length > SECURITY_CONFIG.INPUT_SANITY_LIMIT) {
+    return { 
+      isSafe: false, 
+      reason: 'Input exceeds maximum length',
+      length: prompt.length 
+    };
+  }
+
+  // Check circuit breaker
+  if (checkCircuitBreaker(ip)) {
+    return { 
+      isSafe: false, 
+      reason: 'Rate limit exceeded due to repeated timeouts',
+      code: 'CIRCUIT_BREAKER_ACTIVE'
+    };
+  }
+
   const violations = [];
   const startTime = Date.now();
-  const MAX_PROCESSING_TIME = 100; // 100ms timeout
-  
-  // Check for injection patterns with timeout protection
-  for (const { pattern, type } of INJECTION_PATTERNS) {
-    if (Date.now() - startTime > MAX_PROCESSING_TIME) {
-      console.warn('Prompt detection timeout - prompt may be too complex');
+  let hadTimeout = false;
+
+  // Calculate complexity and dynamic timeout
+  const complexity = calculateComplexity(prompt);
+  const maxProcessingTime = calculateTimeout(prompt, complexity);
+
+  // Fast pre-filtering for obvious patterns
+  const fastPatterns = INJECTION_PATTERNS.filter(p => p.complexity <= 1);
+  const complexPatterns = INJECTION_PATTERNS.filter(p => p.complexity > 1);
+
+  // Check fast patterns first
+  for (const { pattern, type } of fastPatterns) {
+    if (Date.now() - startTime > maxProcessingTime) {
+      hadTimeout = true;
       break;
     }
     
@@ -93,6 +207,31 @@ const detectPromptInjection = (prompt) => {
       console.error('Regex test error:', error);
     }
   }
+
+  // Only check complex patterns if we have time and no violations yet
+  if (violations.length === 0 && !hadTimeout) {
+    for (const { pattern, type } of complexPatterns) {
+      if (Date.now() - startTime > maxProcessingTime) {
+        hadTimeout = true;
+        break;
+      }
+      
+      try {
+        if (pattern.test(prompt)) {
+          violations.push({
+            type,
+            pattern: pattern.source,
+            message: `Potential ${type} detected`
+          });
+        }
+      } catch (error) {
+        console.error('Regex test error:', error);
+      }
+    }
+  }
+
+  // Update circuit breaker
+  updateCircuitBreaker(ip, hadTimeout);
 
   // Check for excessive special characters (simplified)
   const specialChars = prompt.replace(/[a-zA-Z0-9\s]/g, '').length;
@@ -129,7 +268,10 @@ const detectPromptInjection = (prompt) => {
     violations,
     promptLength: prompt.length,
     specialCharRatio,
-    processingTime: Date.now() - startTime
+    processingTime: Date.now() - startTime,
+    complexity,
+    maxProcessingTime,
+    hadTimeout
   };
 };
 
@@ -137,6 +279,7 @@ const detectPromptInjection = (prompt) => {
 const validatePrompt = (req, res, next) => {
   const { prompt_string, content } = req.body;
   const prompt = prompt_string || content;
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
 
   if (!prompt) {
     return res.status(400).json({
@@ -145,19 +288,27 @@ const validatePrompt = (req, res, next) => {
     });
   }
 
-  const validation = detectPromptInjection(prompt);
+  const validation = detectPromptInjection(prompt, ip);
 
   if (!validation.isSafe) {
     console.warn('Prompt injection attempt detected:', {
       violations: validation.violations,
       userId: req.user?.id,
-      ip: req.ip,
-      userAgent: req.get('User-Agent')
+      ip,
+      userAgent: req.get('User-Agent'),
+      processingTime: validation.processingTime,
+      complexity: validation.complexity,
+      hadTimeout: validation.hadTimeout
     });
 
+    // Log circuit breaker activation
+    if (validation.reason === 'CIRCUIT_BREAKER_ACTIVE') {
+      console.error('Circuit breaker activated for IP:', ip);
+    }
+
     return res.status(400).json({
-      message: 'Suspicious prompt content detected',
-      code: 'PROMPT_INJECTION_DETECTED',
+      message: validation.reason || 'Suspicious prompt content detected',
+      code: validation.code || 'PROMPT_INJECTION_DETECTED',
       violations: validation.violations
     });
   }
@@ -195,10 +346,10 @@ const promptValidationRules = [
     .isString()
     .isLength({ min: 1, max: 8000 })
     .withMessage('Prompt must be between 1 and 8000 characters')
-    .custom(value => {
-      const validation = detectPromptInjection(value);
+    .custom((value, { req }) => {
+      const validation = detectPromptInjection(value, req.ip || 'unknown');
       if (!validation.isSafe) {
-        throw new Error(`Suspicious content: ${validation.violations.join(', ')}`);
+        throw new Error(`Suspicious content: ${validation.violations.map(v => v.type).join(', ')}`);
       }
       return true;
     }),
@@ -208,10 +359,10 @@ const promptValidationRules = [
     .isString()
     .isLength({ min: 1, max: 8000 })
     .withMessage('Content must be between 1 and 8000 characters')
-    .custom(value => {
-      const validation = detectPromptInjection(value);
+    .custom((value, { req }) => {
+      const validation = detectPromptInjection(value, req.ip || 'unknown');
       if (!validation.isSafe) {
-        throw new Error(`Suspicious content: ${validation.violations.join(', ')}`);
+        throw new Error(`Suspicious content: ${validation.violations.map(v => v.type).join(', ')}`);
       }
       return true;
     })
@@ -220,5 +371,6 @@ const promptValidationRules = [
 module.exports = {
   detectPromptInjection,
   validatePrompt,
-  promptValidationRules
+  promptValidationRules,
+  SECURITY_CONFIG
 };

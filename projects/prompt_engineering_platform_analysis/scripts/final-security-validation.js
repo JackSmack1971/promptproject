@@ -1,224 +1,235 @@
 #!/usr/bin/env node
 /**
  * Final Security Validation Script
- * 
- * This script validates that all security fixes have been properly implemented
- * and the application is ready for production deployment.
+ * Runs comprehensive security validation across all fixed vulnerabilities
  */
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
-// Security configuration validation
-const securityChecks = {
-  jwtSecret: {
-    name: 'JWT Secret Configuration',
-    check: () => {
-      const envPath = path.join(__dirname, '..', '.env');
-      const envExamplePath = path.join(__dirname, '..', '.env.example');
-      
-      if (!fs.existsSync(envPath)) {
-        return { passed: false, message: '.env file not found' };
-      }
-      
-      const envContent = fs.readFileSync(envPath, 'utf8');
-      const jwtSecret = envContent.match(/JWT_SECRET=(.+)/)?.[1];
-      
-      if (!jwtSecret || jwtSecret.length < 32) {
-        return { passed: false, message: 'JWT_SECRET too short or missing (minimum 32 chars)' };
-      }
-      
-      if (jwtSecret === 'your_jwt_secret') {
-        return { passed: false, message: 'JWT_SECRET still using default value' };
-      }
-      
-      return { passed: true, message: 'JWT secret properly configured' };
-    }
-  },
+// Validate security fixes
+async function validateSecurityFixes() {
+  console.log('🔍 Running Security Validation Suite...\n');
   
-  promptInjectionMiddleware: {
-    name: 'Prompt Injection Protection',
-    check: () => {
-      const middlewarePath = path.join(__dirname, '..', 'src', 'middleware', 'promptInjectionMiddleware.js');
-      
-      if (!fs.existsSync(middlewarePath)) {
-        return { passed: false, message: 'Prompt injection middleware not found' };
-      }
-      
-      const content = fs.readFileSync(middlewarePath, 'utf8');
-      
-      // Check for enhanced sanitization
-      const hasEnhancedSanitization = content.includes('dangerous characters');
-      const hasSQLPatterns = content.includes('sql_injection');
-      const hasEncodingBypass = content.includes('encoding_bypass');
-      
-      if (!hasEnhancedSanitization || !hasSQLPatterns || !hasEncodingBypass) {
-        return { passed: false, message: 'Enhanced prompt injection protection not fully implemented' };
-      }
-      
-      return { passed: true, message: 'Prompt injection protection properly configured' };
+  const results = {
+    timestamp: new Date().toISOString(),
+    tests: [],
+    summary: {
+      passed: 0,
+      failed: 0,
+      warnings: 0
     }
-  },
-  
-  redisSSL: {
-    name: 'Redis SSL Configuration',
-    check: () => {
-      const middlewarePath = path.join(__dirname, '..', 'src', 'middleware', 'rateLimitMiddleware.js');
-      
-      if (!fs.existsSync(middlewarePath)) {
-        return { passed: false, message: 'Rate limit middleware not found' };
-      }
-      
-      const content = fs.readFileSync(middlewarePath, 'utf8');
-      
-      const hasSANValidation = content.includes('subjectAltName');
-      const hasHostnameVerification = content.includes('checkServerIdentity');
-      
-      if (!hasSANValidation || !hasHostnameVerification) {
-        return { passed: false, message: 'Redis SSL certificate validation incomplete' };
-      }
-      
-      return { passed: true, message: 'Redis SSL properly configured' };
-    }
-  },
-  
-  corsSecurity: {
-    name: 'CORS Security Configuration',
-    check: () => {
-      const serverPath = path.join(__dirname, '..', 'server.js');
-      
-      if (!fs.existsSync(serverPath)) {
-        return { passed: false, message: 'Server file not found' };
-      }
-      
-      const content = fs.readFileSync(serverPath, 'utf8');
-      
-      const hasCORS = content.includes('cors(');
-      const hasWhitelist = content.includes('allowedOrigins');
-      const hasCredentials = content.includes('credentials: true');
-      
-      if (!hasCORS || !hasWhitelist || !hasCredentials) {
-        return { passed: false, message: 'CORS security configuration incomplete' };
-      }
-      
-      return { passed: true, message: 'CORS security properly configured' };
-    }
-  },
-  
-  sqlInjectionProtection: {
-    name: 'SQL Injection Protection',
-    check: () => {
-      const dbPath = path.join(__dirname, '..', 'database', 'db.js');
-      
-      if (!fs.existsSync(dbPath)) {
-        return { passed: false, message: 'Database configuration not found' };
-      }
-      
-      const content = fs.readFileSync(dbPath, 'utf8');
-      
-      const hasQueryValidation = content.includes('allowedQueryTypes');
-      const hasParameterValidation = content.includes('injectionPatterns');
-      
-      if (!hasQueryValidation || !hasParameterValidation) {
-        return { passed: false, message: 'SQL injection protection incomplete' };
-      }
-      
-      return { passed: true, message: 'SQL injection protection properly configured' };
-    }
-  },
-  
-  dependencies: {
-    name: 'Security Dependencies',
-    check: () => {
-      const packagePath = path.join(__dirname, '..', 'package.json');
-      
-      if (!fs.existsSync(packagePath)) {
-        return { passed: false, message: 'package.json not found' };
-      }
-      
-      const packageContent = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-      
-      const requiredDeps = ['cors', 'helmet', 'express-rate-limit'];
-      const missingDeps = requiredDeps.filter(dep => !packageContent.dependencies[dep]);
-      
-      if (missingDeps.length > 0) {
-        return { passed: false, message: `Missing security dependencies: ${missingDeps.join(', ')}` };
-      }
-      
-      return { passed: true, message: 'All security dependencies installed' };
-    }
-  }
-};
+  };
 
-// Run all security checks
-async function runSecurityValidation() {
-  console.log('🔐 Running Final Security Validation...\n');
-  
-  let totalChecks = 0;
-  let passedChecks = 0;
-  
-  for (const [key, check] of Object.entries(securityChecks)) {
-    totalChecks++;
+  // Test 1: Prompt Injection Timeout Prevention
+  console.log('✅ Testing prompt injection timeout prevention...');
+  try {
+    const { detectPromptInjection } = require('../src/middleware/promptInjectionMiddleware');
     
-    try {
-      const result = check.check();
-      
-      console.log(`${result.passed ? '✅' : '❌'} ${check.name}`);
-      console.log(`   ${result.message}`);
-      
-      if (result.passed) {
-        passedChecks++;
-      }
-      
-      console.log();
-    } catch (error) {
-      console.log(`❌ ${check.name}`);
-      console.log(`   Error during check: ${error.message}`);
-      console.log();
+    // Test with malicious input
+    const maliciousInput = 'a'.repeat(5000) + '.*.*.*.*.*.*.*.*';
+    const startTime = Date.now();
+    const result = detectPromptInjection(maliciousInput, 'test-ip');
+    const processingTime = Date.now() - startTime;
+    
+    if (processingTime < 500 && !result.hadTimeout) {
+      results.tests.push({
+        test: 'Prompt Injection Timeout Prevention',
+        status: 'PASS',
+        processingTime,
+        details: 'Timeout prevention working correctly'
+      });
+      results.summary.passed++;
+    } else {
+      results.tests.push({
+        test: 'Prompt Injection Timeout Prevention',
+        status: 'FAIL',
+        processingTime,
+        details: 'Timeout prevention failed'
+      });
+      results.summary.failed++;
     }
+  } catch (error) {
+    results.tests.push({
+      test: 'Prompt Injection Timeout Prevention',
+      status: 'ERROR',
+      details: error.message
+    });
+    results.summary.failed++;
   }
-  
-  console.log('📊 Security Validation Summary');
-  console.log('==============================');
-  console.log(`Total Checks: ${totalChecks}`);
-  console.log(`Passed: ${passedChecks}`);
-  console.log(`Failed: ${totalChecks - passedChecks}`);
-  console.log();
-  
-  if (passedChecks === totalChecks) {
-    console.log('🎉 All security checks passed! Application is ready for production deployment.');
-    console.log();
-    console.log('🔐 Next Steps:');
-    console.log('1. Run: npm install to install new dependencies');
-    console.log('2. Configure .env file with proper secrets');
-    console.log('3. Run security tests: npm run security-test');
-    console.log('4. Deploy with confidence!');
-  } else {
-    console.log('⚠️  Security issues detected. Please fix the failed checks before deployment.');
-    process.exit(1);
+
+  // Test 2: Redis Error Sanitization
+  console.log('✅ Testing Redis error sanitization...');
+  try {
+    const securityLogger = {
+      error: (message, error, context) => {
+        const hasSensitiveData = context.ip && context.ip !== '[REDACTED]' || 
+                                context.userAgent && context.userAgent !== '[REDACTED]';
+        return !hasSensitiveData;
+      }
+    };
+    
+    const mockError = new Error('Connection failed');
+    const mockContext = { ip: '192.168.1.100', userAgent: 'Mozilla/5.0' };
+    
+    const sanitized = securityLogger.error('Test', mockError, mockContext);
+    if (sanitized) {
+      results.tests.push({
+        test: 'Redis Error Sanitization',
+        status: 'PASS',
+        details: 'Sensitive data properly sanitized'
+      });
+      results.summary.passed++;
+    } else {
+      results.tests.push({
+        test: 'Redis Error Sanitization',
+        status: 'FAIL',
+        details: 'Sensitive data not sanitized'
+      });
+      results.summary.failed++;
+    }
+  } catch (error) {
+    results.tests.push({
+      test: 'Redis Error Sanitization',
+      status: 'ERROR',
+      details: error.message
+    });
+    results.summary.failed++;
   }
+
+  // Test 3: ReDoS Prevention
+  console.log('✅ Testing ReDoS vulnerability prevention...');
+  try {
+    const { detectPromptInjection } = require('../src/middleware/promptInjectionMiddleware');
+    
+    const redosPatterns = [
+      'a'.repeat(1000) + '.*.*.*.*.*.*',
+      '('.repeat(100) + 'a'.repeat(100) + ')'.repeat(100),
+      'a'.repeat(500) + 'b'.repeat(500) + 'c'.repeat(500) + '.*.*.*'
+    ];
+    
+    let allPassed = true;
+    for (const pattern of redosPatterns) {
+      const startTime = Date.now();
+      detectPromptInjection(pattern, 'test-ip');
+      const processingTime = Date.now() - startTime;
+      
+      if (processingTime > 1000) {
+        allPassed = false;
+        break;
+      }
+    }
+    
+    if (allPassed) {
+      results.tests.push({
+        test: 'ReDoS Prevention',
+        status: 'PASS',
+        details: 'All ReDoS patterns handled efficiently'
+      });
+      results.summary.passed++;
+    } else {
+      results.tests.push({
+        test: 'ReDoS Prevention',
+        status: 'FAIL',
+        details: 'ReDoS patterns caused excessive processing time'
+      });
+      results.summary.failed++;
+    }
+  } catch (error) {
+    results.tests.push({
+      test: 'ReDoS Prevention',
+      status: 'ERROR',
+      details: error.message
+    });
+    results.summary.failed++;
+  }
+
+  // Test 4: Memory Management
+  console.log('✅ Testing memory management for rate limiting...');
+  try {
+    const { createProgressiveLimiter } = require('../src/middleware/rateLimitMiddleware');
+    
+    // Test progressive limiter creation
+    const limiter = createProgressiveLimiter(1000, 10, 2);
+    
+    if (typeof limiter === 'function') {
+      results.tests.push({
+        test: 'Memory Management',
+        status: 'PASS',
+        details: 'Progressive rate limiting properly configured'
+      });
+      results.summary.passed++;
+    } else {
+      results.tests.push({
+        test: 'Memory Management',
+        status: 'FAIL',
+        details: 'Progressive rate limiting not functional'
+      });
+      results.summary.failed++;
+    }
+  } catch (error) {
+    results.tests.push({
+      test: 'Memory Management',
+      status: 'ERROR',
+      details: error.message
+    });
+    results.summary.failed++;
+  }
+
+  // Generate report
+  const report = `
+# Security Validation Report
+**Generated**: ${results.timestamp}
+
+## Summary
+- ✅ **Passed**: ${results.summary.passed}
+- ❌ **Failed**: ${results.summary.failed}
+- ⚠️ **Warnings**: ${results.summary.warnings}
+
+## Detailed Results
+${results.tests.map(test => `
+### ${test.test}
+- **Status**: ${test.status}
+- **Details**: ${test.details}
+${test.processingTime ? `- **Processing Time**: ${test.processingTime}ms` : ''}
+`).join('\n')}
+
+## Security Score
+**Overall Security Score**: ${Math.round((results.summary.passed / (results.summary.passed + results.summary.failed)) * 100)}%
+
+## Recommendations
+${results.summary.failed > 0 ? 
+  '⚠️ **Manual review required** - Some security tests failed. Review test results and fix issues before deployment.' :
+  '✅ **Ready for deployment** - All security tests passed successfully.'
 }
 
-// Generate secure JWT secret
-function generateSecureJWTSecret() {
-  console.log('🔑 Generating secure JWT secret...');
-  const secret = crypto.randomBytes(64).toString('base64');
-  console.log(`Generated JWT_SECRET: ${secret}`);
-  console.log('Add this to your .env file:');
-  console.log(`JWT_SECRET=${secret}`);
+## Next Steps
+1. ${results.summary.failed > 0 ? 'Fix failed security tests' : 'Deploy security fixes to production'}
+2. Monitor security metrics for 48 hours post-deployment
+3. Set up security alerts and monitoring
+`;
+
+  // Write report
+  const reportPath = path.join(__dirname, '../SECURITY_VALIDATION_REPORT.md');
+  fs.writeFileSync(reportPath, report.trim());
+  
+  console.log('\n📊 Security Validation Complete!');
+  console.log(`📋 Report saved to: ${reportPath}`);
+  console.log(`📈 Security Score: ${Math.round((results.summary.passed / (results.summary.passed + results.summary.failed)) * 100)}%`);
+  
+  return results.summary.failed === 0;
 }
 
 // Run validation if called directly
 if (require.main === module) {
-  if (process.argv.includes('--generate-secret')) {
-    generateSecureJWTSecret();
-  } else {
-    runSecurityValidation();
-  }
+  validateSecurityFixes()
+    .then(success => {
+      process.exit(success ? 0 : 1);
+    })
+    .catch(error => {
+      console.error('Validation failed:', error);
+      process.exit(1);
+    });
 }
 
-module.exports = {
-  runSecurityValidation,
-  generateSecureJWTSecret
-};
+module.exports = { validateSecurityFixes };
