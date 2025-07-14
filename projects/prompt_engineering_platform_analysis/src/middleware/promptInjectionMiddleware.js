@@ -2,38 +2,33 @@ const { body } = require('express-validator');
 
 // Common prompt injection patterns
 const INJECTION_PATTERNS = [
-  // System prompt manipulation
-  /system\s*:/i,
-  /ignore\s+previous\s+instructions/i,
-  /disregard\s+all\s+previous/i,
-  /forget\s+all\s+previous/i,
-  /you\s+are\s+now/i,
-  /pretend\s+to\s+be/i,
-  /act\s+as\s+if/i,
+  // System prompt manipulation - simplified patterns
+  { pattern: /system\s*:/i, type: 'system_manipulation' },
+  { pattern: /ignore\s+previous/i, type: 'instruction_override' },
+  { pattern: /disregard\s+all/i, type: 'instruction_override' },
+  { pattern: /forget\s+all/i, type: 'instruction_override' },
+  { pattern: /you\s+are\s+now/i, type: 'role_manipulation' },
+  { pattern: /pretend\s+to\s+be/i, type: 'role_manipulation' },
   
-  // Code injection attempts
-  /```[\s\S]*?```/g,
-  /javascript\s*:/i,
-  /eval\s*\(/i,
-  /exec\s*\(/i,
+  // Code injection attempts - safer patterns
+  { pattern: /javascript:/i, type: 'code_injection' },
+  { pattern: /eval\s*\(/i, type: 'code_execution' },
+  { pattern: /exec\s*\(/i, type: 'code_execution' },
   
   // Data exfiltration attempts
-  /send\s+to\s+external/i,
-  /upload\s+to/i,
-  /share\s+with/i,
-  /leak\s+to/i,
+  { pattern: /send\s+to\s+external/i, type: 'data_exfiltration' },
+  { pattern: /upload\s+to/i, type: 'data_exfiltration' },
+  { pattern: /share\s+with/i, type: 'data_sharing' },
   
-  // Malicious instructions
-  /delete\s+all/i,
-  /wipe\s+data/i,
-  /drop\s+table/i,
-  /shutdown/i,
+  // Malicious instructions - simplified
+  { pattern: /delete\s+all/i, type: 'destructive_command' },
+  { pattern: /wipe\s+data/i, type: 'destructive_command' },
+  { pattern: /drop\s+table/i, type: 'sql_injection' },
   
   // Social engineering
-  /admin\s+password/i,
-  /root\s+access/i,
-  /bypass\s+security/i,
-  /override\s+restrictions/i
+  { pattern: /admin\s+password/i, type: 'credential_harvesting' },
+  { pattern: /bypass\s+security/i, type: 'security_bypass' },
+  { pattern: /override\s+restrictions/i, type: 'security_bypass' }
 ];
 
 // Prompt injection detection function
@@ -43,30 +38,65 @@ const detectPromptInjection = (prompt) => {
   }
 
   const violations = [];
+  const startTime = Date.now();
+  const MAX_PROCESSING_TIME = 100; // 100ms timeout
   
-  // Check for injection patterns
-  INJECTION_PATTERNS.forEach(pattern => {
-    if (pattern.test(prompt)) {
-      violations.push(`Detected potential injection: ${pattern.source || pattern}`);
+  // Check for injection patterns with timeout protection
+  for (const { pattern, type } of INJECTION_PATTERNS) {
+    if (Date.now() - startTime > MAX_PROCESSING_TIME) {
+      console.warn('Prompt detection timeout - prompt may be too complex');
+      break;
     }
-  });
-
-  // Check for excessive special characters
-  const specialCharRatio = (prompt.match(/[^a-zA-Z0-9\s]/g) || []).length / prompt.length;
-  if (specialCharRatio > 0.3) {
-    violations.push('Excessive special characters detected');
+    
+    try {
+      if (pattern.test(prompt)) {
+        violations.push({
+          type,
+          pattern: pattern.source,
+          message: `Potential ${type} detected`
+        });
+      }
+    } catch (error) {
+      console.error('Regex test error:', error);
+    }
   }
 
-  // Check for excessive length (potential DoS)
-  if (prompt.length > 10000) {
-    violations.push('Prompt exceeds maximum length');
+  // Check for excessive special characters (simplified)
+  const specialChars = prompt.replace(/[a-zA-Z0-9\s]/g, '').length;
+  const specialCharRatio = specialChars / prompt.length;
+  if (specialCharRatio > 0.3) {
+    violations.push({
+      type: 'excessive_special_chars',
+      message: 'Excessive special characters detected',
+      ratio: specialCharRatio
+    });
+  }
+
+  // Check for excessive length
+  if (prompt.length > 8000) {
+    violations.push({
+      type: 'excessive_length',
+      message: 'Prompt exceeds maximum length',
+      length: prompt.length
+    });
+  }
+
+  // Check for code block patterns (safer alternative to complex regex)
+  const codeBlockCount = (prompt.match(/```/g) || []).length;
+  if (codeBlockCount > 2) {
+    violations.push({
+      type: 'code_blocks',
+      message: 'Excessive code block usage detected',
+      count: codeBlockCount
+    });
   }
 
   return {
     isSafe: violations.length === 0,
     violations,
     promptLength: prompt.length,
-    specialCharRatio
+    specialCharRatio,
+    processingTime: Date.now() - startTime
   };
 };
 

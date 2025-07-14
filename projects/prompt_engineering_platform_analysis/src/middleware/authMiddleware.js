@@ -15,10 +15,17 @@ const authenticateToken = (req, res, next) => {
     return res.sendStatus(401); // No token provided
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
     if (err) {
+      console.error('JWT verification failed:', err.message);
       return res.sendStatus(403); // Invalid token
     }
+    
+    // Validate token structure
+    if (!user || !user.id || !user.username) {
+      return res.sendStatus(403);
+    }
+    
     req.user = user;
     next();
   });

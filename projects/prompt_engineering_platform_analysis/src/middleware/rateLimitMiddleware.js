@@ -2,13 +2,42 @@ const rateLimit = require('express-rate-limit');
 const RedisStore = require('rate-limit-redis');
 const Redis = require('ioredis');
 
-// Redis client for distributed rate limiting
+// Redis client for distributed rate limiting with security
 const redisClient = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.REDIS_PORT || 6379,
   password: process.env.REDIS_PASSWORD,
   db: 1, // Use separate DB for rate limiting
-  lazyConnect: true
+  lazyConnect: true,
+  // Security configurations
+  tls: process.env.REDIS_TLS === 'true' ? {
+    servername: process.env.REDIS_HOST,
+    rejectUnauthorized: true,
+    ca: process.env.REDIS_CA_CERT ? Buffer.from(process.env.REDIS_CA_CERT, 'base64') : undefined,
+    cert: process.env.REDIS_CLIENT_CERT ? Buffer.from(process.env.REDIS_CLIENT_CERT, 'base64') : undefined,
+    key: process.env.REDIS_CLIENT_KEY ? Buffer.from(process.env.REDIS_CLIENT_KEY, 'base64') : undefined
+  } : undefined,
+  connectTimeout: 10000,
+  lazyConnect: true,
+  maxRetriesPerRequest: 3,
+  retryDelayOnFailover: 100,
+  enableReadyCheck: true,
+  maxLoadingTimeout: 3000,
+  // Connection pooling
+  family: 4,
+  keepAlive: true,
+  // Security - disable potentially dangerous commands
+  disableResubscribing: false,
+  // Enable TLS hostname verification
+  checkServerIdentity: (servername, cert) => {
+    if (process.env.NODE_ENV === 'production') {
+      // Strict hostname verification in production
+      if (cert.subject.CN !== servername) {
+        throw new Error(`Certificate CN (${cert.subject.CN}) does not match expected hostname (${servername})`);
+      }
+    }
+    return undefined;
+  }
 });
 
 // General API rate limiting
@@ -76,29 +105,43 @@ const adminLimiter = createRateLimit(
   }
 );
 
-// Progressive rate limiting based on failed attempts
+// Progressive rate limiting based on failed attempts - Redis-based
 const createProgressiveLimiter = (baseWindowMs, baseMax, multiplier) => {
-  const attempts = new Map();
+  const PROGRESSIVE_KEY_PREFIX = 'progressive:';
   
-  return (req, res, next) => {
-    const key = req.ip || req.connection.remoteAddress || 'unknown';
-    const currentAttempts = attempts.get(key) || 0;
+  return async (req, res, next) => {
+    const key = `${PROGRESSIVE_KEY_PREFIX}${req.ip || req.connection.remoteAddress || 'unknown'}`;
     
-    const windowMs = baseWindowMs * Math.pow(multiplier, currentAttempts);
-    const max = Math.max(1, Math.floor(baseMax / Math.pow(multiplier, currentAttempts)));
-    
-    const limiter = createRateLimit(windowMs, max, 'Too many failed attempts');
-    
-    // Custom onLimitReached to track failed attempts
-    limiter.onLimitReached = (req, res, options) => {
-      const newAttempts = (attempts.get(key) || 0) + 1;
-      attempts.set(key, newAttempts);
+    try {
+      // Get current attempts from Redis
+      const currentAttempts = parseInt(await redisClient.get(key) || '0');
       
-      // Reset attempts after successful request
-      setTimeout(() => attempts.delete(key), windowMs);
-    };
-    
-    return limiter(req, res, next);
+      const windowMs = baseWindowMs * Math.pow(multiplier, currentAttempts);
+      const max = Math.max(1, Math.floor(baseMax / Math.pow(multiplier, currentAttempts)));
+      
+      const limiter = createRateLimit(windowMs, max, 'Too many failed attempts');
+      
+      // Custom onLimitReached to track failed attempts
+      limiter.onLimitReached = async (req, res, options) => {
+        const newAttempts = currentAttempts + 1;
+        await redisClient.setex(key, Math.ceil(windowMs / 1000), newAttempts.toString());
+        
+        // Log the progressive blocking
+        console.warn('Progressive rate limit triggered:', {
+          ip: req.ip,
+          attempts: newAttempts,
+          windowMs,
+          max
+        });
+      };
+      
+      return limiter(req, res, next);
+    } catch (error) {
+      console.error('Error in progressive rate limiting:', error);
+      // Fallback to basic rate limiting on Redis failure
+      const fallbackLimiter = createRateLimit(baseWindowMs, baseMax, 'Rate limiting temporarily unavailable');
+      return fallbackLimiter(req, res, next);
+    }
   };
 };
 
