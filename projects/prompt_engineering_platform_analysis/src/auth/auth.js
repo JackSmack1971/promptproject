@@ -33,7 +33,13 @@ router.post('/register', async (req, res) => {
 
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const JWT_SECRET = 'your_jwt_secret'; // TODO: Move to environment variable
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Validate JWT secret on startup
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET must be set and at least 32 characters long');
+  process.exit(1);
+}
 
 // Login endpoint
 router.post('/login', async (req, res) => {

@@ -1,5 +1,11 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = 'your_jwt_secret'; // Must match the secret in auth.js
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Validate JWT secret on startup
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET must be set and at least 32 characters long');
+  process.exit(1);
+}
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -18,4 +24,22 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-module.exports = authenticateToken;
+const authorizeRoles = (roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    if (!req.user.roles || !req.user.roles.some(role => roles.includes(role))) {
+      return res.status(403).json({ 
+        message: 'Insufficient permissions',
+        required: roles,
+        userRoles: req.user.roles || []
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = { authenticateToken, authorizeRoles };
