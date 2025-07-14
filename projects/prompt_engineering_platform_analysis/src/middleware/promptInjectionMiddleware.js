@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 
-// Common prompt injection patterns
+// Common prompt injection patterns - enhanced security
 const INJECTION_PATTERNS = [
   // System prompt manipulation - simplified patterns
   { pattern: /system\s*:/i, type: 'system_manipulation' },
@@ -9,26 +9,59 @@ const INJECTION_PATTERNS = [
   { pattern: /forget\s+all/i, type: 'instruction_override' },
   { pattern: /you\s+are\s+now/i, type: 'role_manipulation' },
   { pattern: /pretend\s+to\s+be/i, type: 'role_manipulation' },
+  { pattern: /act\s+as\s+if/i, type: 'role_manipulation' },
   
-  // Code injection attempts - safer patterns
+  // Code injection attempts - enhanced patterns
   { pattern: /javascript:/i, type: 'code_injection' },
   { pattern: /eval\s*\(/i, type: 'code_execution' },
   { pattern: /exec\s*\(/i, type: 'code_execution' },
+  { pattern: /function\s*\(/i, type: 'code_execution' },
+  { pattern: /require\s*\(/i, type: 'code_execution' },
+  { pattern: /import\s*\(/i, type: 'code_execution' },
+  { pattern: /process\./i, type: 'system_access' },
+  { pattern: /global\./i, type: 'system_access' },
+  
+  // SQL injection patterns
+  { pattern: /union\s+select/i, type: 'sql_injection' },
+  { pattern: /insert\s+into/i, type: 'sql_injection' },
+  { pattern: /update\s+.*\s+set/i, type: 'sql_injection' },
+  { pattern: /delete\s+from/i, type: 'sql_injection' },
+  { pattern: /drop\s+table/i, type: 'sql_injection' },
+  { pattern: /alter\s+table/i, type: 'sql_injection' },
+  { pattern: /exec\s+\(/i, type: 'sql_injection' },
   
   // Data exfiltration attempts
   { pattern: /send\s+to\s+external/i, type: 'data_exfiltration' },
   { pattern: /upload\s+to/i, type: 'data_exfiltration' },
   { pattern: /share\s+with/i, type: 'data_sharing' },
+  { pattern: /post\s+to\s+url/i, type: 'data_exfiltration' },
+  { pattern: /http:\/\/|https:\/\//i, type: 'external_request' },
   
-  // Malicious instructions - simplified
+  // Malicious instructions - enhanced
   { pattern: /delete\s+all/i, type: 'destructive_command' },
   { pattern: /wipe\s+data/i, type: 'destructive_command' },
-  { pattern: /drop\s+table/i, type: 'sql_injection' },
+  { pattern: /rm\s+-rf/i, type: 'destructive_command' },
+  { pattern: /format\s+/i, type: 'destructive_command' },
+  { pattern: /shutdown\s+/i, type: 'destructive_command' },
   
-  // Social engineering
+  // Social engineering - enhanced
   { pattern: /admin\s+password/i, type: 'credential_harvesting' },
+  { pattern: /root\s+password/i, type: 'credential_harvesting' },
+  { pattern: /api\s+key/i, type: 'credential_harvesting' },
+  { pattern: /secret\s+key/i, type: 'credential_harvesting' },
   { pattern: /bypass\s+security/i, type: 'security_bypass' },
-  { pattern: /override\s+restrictions/i, type: 'security_bypass' }
+  { pattern: /override\s+restrictions/i, type: 'security_bypass' },
+  { pattern: /disable\s+security/i, type: 'security_bypass' },
+  
+  // Encoding bypass attempts
+  { pattern: /&#\d+;/i, type: 'encoding_bypass' },
+  { pattern: /&#x[\da-f]+;/i, type: 'encoding_bypass' },
+  { pattern: /%[0-9a-f]{2}/i, type: 'encoding_bypass' },
+  
+  // Advanced injection techniques
+  { pattern: /prompt\s+injection/i, type: 'meta_injection' },
+  { pattern: /jailbreak/i, type: 'security_bypass' },
+  { pattern: /dan\s+mode/i, type: 'security_bypass' } // "Do Anything Now" mode
 ];
 
 // Prompt injection detection function
@@ -129,9 +162,19 @@ const validatePrompt = (req, res, next) => {
     });
   }
 
-  // Sanitize the prompt
+  // Enhanced sanitization for dangerous characters
   const sanitizedPrompt = prompt
+    // Remove or escape dangerous HTML/XML characters
     .replace(/[<>]/g, '') // Remove potential HTML tags
+    .replace(/&/g, '&') // Escape ampersands
+    .replace(/"/g, '"') // Escape double quotes
+    .replace(/'/g, '&#x27;') // Escape single quotes
+    .replace(/`/g, '') // Remove backticks (template literals)
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+\s*=/gi, '') // Remove event handlers
+    .replace(/script/gi, '') // Remove script tags
+    .replace(/eval\s*\(/gi, '') // Remove eval statements
+    .replace(/expression\s*\(/gi, '') // Remove expression statements
     .trim()
     .substring(0, 8000); // Enforce maximum length
 

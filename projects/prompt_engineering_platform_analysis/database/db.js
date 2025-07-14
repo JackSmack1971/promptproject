@@ -13,7 +13,45 @@ const EXPIRE_TIME = 3600; // Cache for 1 hour
 
 module.exports = {
   query: async (text, params) => {
-    const isReadQuery = text.toLowerCase().startsWith('select');
+    // SQL injection prevention - validate query type
+    const allowedQueryTypes = ['select', 'insert', 'update', 'delete'];
+    const queryType = text.toLowerCase().trim().split(/\s+/)[0];
+    
+    if (!allowedQueryTypes.includes(queryType)) {
+      throw new Error(`Unsupported query type: ${queryType}`);
+    }
+
+    // Validate parameters to prevent injection
+    if (params) {
+      params.forEach((param, index) => {
+        if (typeof param === 'string') {
+          // Basic validation for string parameters
+          if (param.length > 10000) {
+            throw new Error(`Parameter at index ${index} exceeds maximum length`);
+          }
+          // Check for SQL injection patterns in parameters
+          const injectionPatterns = [
+            /union\s+select/i,
+            /insert\s+into/i,
+            /update\s+.*\s+set/i,
+            /delete\s+from/i,
+            /drop\s+table/i,
+            /alter\s+table/i,
+            /exec\s*\(/i,
+            /script/i,
+            /javascript:/i
+          ];
+          
+          injectionPatterns.forEach(pattern => {
+            if (pattern.test(param)) {
+              throw new Error(`Potential SQL injection detected in parameter at index ${index}`);
+            }
+          });
+        }
+      });
+    }
+
+    const isReadQuery = queryType === 'select';
     const cacheKey = `db_query:${text}:${JSON.stringify(params)}`;
 
     if (isReadQuery) {

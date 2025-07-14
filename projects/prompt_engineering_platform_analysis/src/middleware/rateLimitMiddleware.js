@@ -17,23 +17,67 @@ const redisClient = new Redis({
     cert: process.env.REDIS_CLIENT_CERT ? Buffer.from(process.env.REDIS_CLIENT_CERT, 'base64') : undefined,
     key: process.env.REDIS_CLIENT_KEY ? Buffer.from(process.env.REDIS_CLIENT_KEY, 'base64') : undefined
   } : undefined,
-  connectTimeout: 10000,
+  connectTimeout: 5000, // Reduced from 10000ms for faster failure detection
   lazyConnect: true,
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: 1, // Reduced from 3 to prevent resource exhaustion
   retryDelayOnFailover: 100,
   enableReadyCheck: true,
   maxLoadingTimeout: 3000,
-  // Connection pooling
+  maxmemoryPolicy: 'allkeys-lru', // Memory management for high-load scenarios
+  // Connection pooling optimization
   family: 4,
   keepAlive: true,
+  // Enhanced connection pool settings
+  retryDelayOnClusterDown: 300,
+  enableOfflineQueue: false, // Prevent queue buildup during connection issues
+  readOnly: false,
+  stringNumbers: false,
+  // Security - connection health monitoring
+  maxRetriesPerRequest: 1,
+  // Performance tuning
+  commandTimeout: 5000,
+  reconnectOnError: (error) => {
+    const targetMsg = 'READONLY';
+    if (error.message.includes(targetMsg)) {
+      return true;
+    }
+    return false;
+  },
   // Security - disable potentially dangerous commands
   disableResubscribing: false,
   // Enable TLS hostname verification
   checkServerIdentity: (servername, cert) => {
     if (process.env.NODE_ENV === 'production') {
       // Strict hostname verification in production
-      if (cert.subject.CN !== servername) {
-        throw new Error(`Certificate CN (${cert.subject.CN}) does not match expected hostname (${servername})`);
+      // Check both Common Name (CN) and Subject Alternative Names (SAN)
+      const cn = cert.subject.CN;
+      const san = cert.subjectaltname;
+      
+      // Check if hostname matches CN
+      const cnMatches = cn === servername;
+      
+      // Check if hostname matches any SAN entries
+      let sanMatches = false;
+      if (san) {
+        // Parse SAN entries (format: "DNS:hostname, DNS:hostname2, IP:1.2.3.4")
+        const sanEntries = san.split(',').map(entry => entry.trim());
+        sanMatches = sanEntries.some(entry => {
+          if (entry.startsWith('DNS:')) {
+            const dnsName = entry.substring(4);
+            // Support wildcard certificates
+            if (dnsName.startsWith('*.')) {
+              const domain = dnsName.substring(2);
+              return servername.endsWith(domain);
+            }
+            return dnsName === servername;
+          }
+          return false;
+        });
+      }
+      
+      // If neither CN nor SAN matches, reject the certificate
+      if (!cnMatches && !sanMatches) {
+        throw new Error(`Certificate does not match expected hostname (${servername}). CN: ${cn}, SAN: ${san}`);
       }
     }
     return undefined;
@@ -138,9 +182,19 @@ const createProgressiveLimiter = (baseWindowMs, baseMax, multiplier) => {
       return limiter(req, res, next);
     } catch (error) {
       console.error('Error in progressive rate limiting:', error);
-      // Fallback to basic rate limiting on Redis failure
-      const fallbackLimiter = createRateLimit(baseWindowMs, baseMax, 'Rate limiting temporarily unavailable');
-      return fallbackLimiter(req, res, next);
+      // More secure fallback: fail closed or use in-memory progressive tracking
+      if (process.env.NODE_ENV === 'production') {
+        // In production, fail closed during Redis outages to prevent abuse
+        return res.status(503).json({
+          error: 'Service temporarily unavailable',
+          message: 'Rate limiting service is currently unavailable. Please try again later.',
+          retryAfter: 300 // 5 minutes
+        });
+      } else {
+        // In development, use basic rate limiting as fallback
+        const fallbackLimiter = createRateLimit(baseWindowMs, Math.max(1, Math.floor(baseMax / 2)), 'Rate limiting temporarily unavailable');
+        return fallbackLimiter(req, res, next);
+      }
     }
   };
 };

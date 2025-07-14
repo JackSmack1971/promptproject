@@ -2,6 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const cors = require('cors');
 const authRoutes = require('./projects/prompt_engineering_platform_analysis/src/auth/auth');
 const { authenticateToken } = require('./projects/prompt_engineering_platform_analysis/src/middleware/authMiddleware');
 const { apiLimiter, abuseDetector } = require('./projects/prompt_engineering_platform_analysis/src/middleware/rateLimitMiddleware');
@@ -38,6 +39,31 @@ app.use(helmet({
     preload: true
   }
 }));
+
+// CORS configuration with security best practices
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : ['http://localhost:3000', 'http://localhost:3001'];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS policy violation: ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+  maxAge: 86400 // 24 hours
+};
+
+app.use(cors(corsOptions));
 
 // Sentry request handler must be the first middleware
 app.use(Sentry.Handlers.requestHandler());

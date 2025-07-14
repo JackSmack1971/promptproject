@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "security-test": "node tests/security/security-test-suite.js",
     "audit": "npm audit --audit-level=high",
-    "security-check": "npm run audit && npm run security-test"
+    "security-check": "npm run audit && npm run security-test",
+    "security-validate": "node projects/prompt_engineering_platform_analysis/scripts/final-security-validation.js",
+    "security-setup": "npm install && npm run security-validate"
   },
   "keywords": ["security", "prompt-engineering", "ai-platform", "gdpr-compliant"],
   "author": "Security Team",
@@ -18,6 +20,7 @@
     "@sentry/integrations": "^7.114.0",
     "@sentry/node": "^9.38.0",
     "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
