@@ -95,7 +95,7 @@ const redisClient = new Redis({
       }
       
       if (!cnMatches && !sanMatches) {
-        throw new Error(`Certificate does not match expected hostname (${servername}(`)${servername})`);
+        throw new Error(`Certificate does not match expected hostname (${servername})`);
       }
     }
     return undefined;
@@ -178,4 +178,30 @@ const createProgressiveLimiter = (baseWindowMs, baseMax, multiplier) => {
       
       const limiter = createRateLimit(windowMs, max, 'Too many failed attempts');
       
-      rtReachL)=>AA+1;wdClxkMwM)wA.S
+      // Apply the progressive rate limiter
+      limiter(req, res, next);
+    } catch (error) {
+      securityLogger.error('Progressive rate limiter error', error, {
+        ip: req.ip,
+        url: req.originalUrl
+      });
+      next();
+    }
+  };
+};
+
+// Progressive limiters for different scenarios
+const progressiveAuthLimiter = createProgressiveLimiter(15 * 60 * 1000, 5, 2);
+const progressiveApiLimiter = createProgressiveLimiter(5 * 60 * 1000, 10, 1.5);
+
+// Export all limiters
+module.exports = {
+  apiLimiter,
+  authLimiter,
+  aiLimiter,
+  adminLimiter,
+  progressiveAuthLimiter,
+  progressiveApiLimiter,
+  redisClient,
+  securityLogger
+};
